@@ -1,0 +1,19 @@
+key,value,type
+createEvent.title,Tech Summit 2026,string
+createEvent.description,A premier technology conference.,string
+createEvent.category,Conference,string
+createEvent.venue,Bangalore International Centre,string
+createEvent.city,Bangalore,string
+createEvent.eventDate,2026-12-15T09:00:00.000Z,string
+createEvent.price,1500,number
+createEvent.totalSeats,500,number
+createEvent.imageUrl,https://example.com/banner.jpg,string
+updateEvent.title,Tech Summit 2026,string
+updateEvent.description,Technology Conference.,string
+updateEvent.category,Conference,string
+updateEvent.venue,Bangalore International Centre,string
+updateEvent.city,Bangalore,string
+updateEvent.eventDate,2026-12-20T09:00:00.000Z,string
+updateEvent.price,1600,number
+updateEvent.totalSeats,500,number
+updateEvent.imageUrl,https://example.com/banner.jpg,string

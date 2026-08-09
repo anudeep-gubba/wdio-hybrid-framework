@@ -1,0 +1,21 @@
+createEvent:
+  title: Tech Summit 2026
+  description: A premier technology conference.
+  category: Conference
+  venue: Bangalore International Centre
+  city: Bangalore
+  eventDate: "2026-12-15T09:00:00.000Z"
+  price: 1500
+  totalSeats: 500
+  imageUrl: https://example.com/banner.jpg
+
+updateEvent:
+  title: Tech Summit 2026
+  description: Technology Conference.
+  category: Conference
+  venue: Bangalore International Centre
+  city: Bangalore
+  eventDate: "2026-12-20T09:00:00.000Z"
+  price: 1600
+  totalSeats: 500
+  imageUrl: https://example.com/banner.jpg

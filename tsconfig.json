@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", // modern JS output
+    "module": "NodeNext", // native Node module resolution
+    "moduleResolution": "NodeNext", // must match "module"
+    "strict": true, // strict type-checking
+    "esModuleInterop": true, // default imports from CommonJS modules
+    "skipLibCheck": true, // skip type-checking .d.ts files
+    "types": [
+      "node", // Node.js globals
+      "mocha", // global describe, it, before, after, etc.
+      "@wdio/globals/types", // global $, $$, browser, driver
+      "expect-webdriverio" // expect(...).toBeDisplayed() etc.
+    ]
+  },
+  "include": [
+    "./test/**/*.ts", // web + mobile + api specs (all live under test/)
+    "./config/**/*.ts", // type-check all config files too
+    "./src/**/*.ts" // pages, components, api layer, data layer, etc.
+  ]
+}
