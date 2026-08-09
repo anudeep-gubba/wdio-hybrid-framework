@@ -51,9 +51,7 @@ export class ApiEngine {
     try {
       const retryPolicy = new RetryPolicy({ maxRetries: request.retries ?? 0 });
 
-      const response = await retryPolicy.execute(async () =>
-        this.send(request, headers),
-      );
+      const response = await retryPolicy.execute(async () => this.send(request, headers));
 
       const duration = Date.now() - start;
 
@@ -125,18 +123,26 @@ export class ApiEngine {
   private async attachRequest(request: ApiRequest, headers: ApiHeaders): Promise<void> {
     await RequestResponseAttachment.attachHeaders(this.redactHeaders(headers));
 
-    await RequestResponseAttachment.attachRequest(request);
+    await RequestResponseAttachment.attachRequest({
+      ...request,
+      body: this.redactBody(request.body),
+    });
   }
 
   private async attachResponse<T>(response: ApiResponse<T>): Promise<void> {
-    await RequestResponseAttachment.attachResponse(response);
+    await RequestResponseAttachment.attachResponse({
+      ...response,
+      body: this.redactBody(response.body),
+    });
   }
 
   private logRequest<TRequest>(request: ApiRequest<TRequest>, headers: ApiHeaders): void {
     Logger.info(`[API] Request -> ${request.method} ${ENV.API_BASE_URL}${request.endpoint}`);
     Logger.debug(`[API] Request headers -> ${JSON.stringify(this.redactHeaders(headers))}`);
     if (request.body !== undefined) {
-      Logger.info(`[API] Request body -> ${JSON.stringify(request.body, null, 2)}`);
+      Logger.info(
+        `[API] Request body -> ${JSON.stringify(this.redactBody(request.body), null, 2)}`,
+      );
     }
   }
 
@@ -147,7 +153,9 @@ export class ApiEngine {
   ): void {
     Logger.info(`[API] Response <- ${endpoint} [${response.status}] ${duration} ms`);
     Logger.debug(`[API] Response headers -> ${JSON.stringify(response.headers)}`);
-    Logger.info(`[API] Response body -> ${JSON.stringify(response.body, null, 2)}`);
+    Logger.info(
+      `[API] Response body -> ${JSON.stringify(this.redactBody(response.body), null, 2)}`,
+    );
   }
 
   private redactHeaders(headers: ApiHeaders): ApiHeaders {
@@ -157,6 +165,28 @@ export class ApiEngine {
     }
 
     return safeHeaders;
+  }
+
+  /**
+   * Scrubs sensitive fields (password/token/secret, case-insensitive, one level deep — every
+   * request/response body this framework sends is a flat object) before it reaches a log line or
+   * an Allure attachment. Only affects what's *logged/attached* — `send()` transmits the real,
+   * unredacted `request.body`. Allure results routinely end up as CI artifacts, so a leak there is
+   * no safer than a leak in logs/*.log.
+   */
+  private redactBody(body: unknown): unknown {
+    if (!body || typeof body !== "object") {
+      return body;
+    }
+
+    const redacted: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+    for (const key of Object.keys(redacted)) {
+      if (/password|token|secret/i.test(key)) {
+        redacted[key] = "*****";
+      }
+    }
+
+    return redacted;
   }
 
   // -------------------------------------------------------
@@ -182,10 +212,7 @@ export class ApiEngine {
       return;
     }
 
-    throw this.createException(
-      response.status,
-      `Request failed with HTTP ${response.status}`,
-    );
+    throw this.createException(response.status, `Request failed with HTTP ${response.status}`);
   }
 
   private createException(status: number, message: string): ApiException {

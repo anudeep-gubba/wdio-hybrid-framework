@@ -32,11 +32,18 @@ npm run test:all         # web -> api -> android -> ios, sequentially
 npm run test:parallel    # web + api + android + ios, concurrently (see "Parallel execution" below)
 npm run smoke            # web tests tagged @smoke (--mochaOpts.grep)
 npm run typecheck        # tsc --noEmit
+npm run lint             # eslint . (npm run lint:fix to auto-fix)
+npm run format:check     # prettier --check . (npm run format to auto-fix)
 npm run allure-report    # generate + open the Allure report from allure-results/
 npm run data:build-excel # regenerate src/data/datasets/excel/*.xlsx from the matching *.csv
 ```
 
+CI (`.github/workflows/ci.yml`) runs `lint`/`format:check`/`typecheck` plus `test:web`/`test:api` on
+every push/PR; a `test:android`-via-BrowserStack job exists but is off by default — see "CI/CD,
+linting, and BrowserStack" below for what it needs before it'll actually run.
+
 Run a single spec file or a test by name with WDIO's own filters:
+
 ```bash
 npx wdio run config/wdio.web.conf.ts --spec test/specs/web/login.spec.ts
 npx wdio run config/wdio.web.conf.ts --mochaOpts.grep "Valid user should login"
@@ -44,6 +51,7 @@ npx wdio run config/wdio.web.conf.ts --mochaOpts.grep "Valid user should login"
 
 Target a specific environment / data format via env vars (defaults: `TEST_ENV=qa`, format from that
 env file):
+
 ```bash
 TEST_ENV=dev npm run test:web
 LOG_LEVEL=debug npm run test:api
@@ -156,19 +164,22 @@ otherwise treated as strings, unlike JSON/YAML where numeric/boolean types are i
 never drift.
 
 Current dataset: `loginData.{json,yaml,csv,xlsx}` + `src/data/models/LoginData.ts`:
+
 ```ts
 {
-  web:    { validUser, invalidPassword, invalidEmail }   // User { email, password } — real EventHub accounts
-  api:    { validUser }                                  // User — real EventHub account
-  mobile: { validUser, invalidPassword }                 // MobileUser { username, password } — Swag Labs seed accounts
+  web:    { validUser: User, invalidPassword: User, invalidEmail: User }
+  api:    { validUser: User }
+  mobile: { validUser, invalidPassword }   // MobileUser { username, password } — Swag Labs seed accounts
 }
 ```
-`web`/`api` use the shared `User` model (`src/models/User.ts`) — real EventHub accounts, not
-synthetic fixtures (only `web.invalidEmail` is a made-up, never-registered address, since it only
-needs to *not* exist). `mobile` uses `MobileUser` (`src/models/MobileUser.ts`) —
-`standard_user`/`secret_sauce`, one of the Swag Labs app's own fixed seed accounts (local to each app
-instance, no shared backend session), so unlike `web`/`api` there's no need for a different account
-per device/platform.
+
+Every field is a plain value — `TestData.load<LoginData>("loginData")` alone returns real, usable
+credentials, no wrapper call needed by a spec. `mobile` uses `MobileUser` (`src/models/MobileUser.ts`)
+— `standard_user`/`secret_sauce`, one of the Swag Labs app's own fixed seed accounts (local to each
+app instance, no shared backend session, _publicly documented_ by Sauce Labs), so those are written
+as plain literals directly in the dataset. `web`/`api`'s real EventHub credentials are **never**
+literals in this dataset — see "Real secrets never live in `.env` or committed fixtures" below for
+how `${webValidUserEmail}`-style placeholders resolve to them automatically.
 
 Second dataset: `eventData.{json,yaml,csv,xlsx}` + `src/data/models/EventData.ts` — `{ createEvent,
 updateEvent }`, both typed as `CreateEventRequest`/`UpdateEventRequest` (`src/api/requests/
@@ -176,8 +187,54 @@ EventRequest.ts`) so the payload shape stays in sync with the service layer. `ev
 dataset is a static placeholder; `test/specs/api/event.spec.ts` overwrites it at runtime via
 `getFutureDateIso()` rather than relying on a hardcoded date staying in the future forever.
 
-When adding a new dataset, add the file for every
-`src/data/models/index.ts`.
+When adding a new dataset, add the file for every supported format, add a typed model in
+`src/data/models/`, and export it from `src/data/models/index.ts`.
+
+#### Real secrets never live in `.env` or committed fixtures
+
+`config/environments/*.env` is plain configuration (URLs, timeouts, device names) — no credentials,
+API keys, or tokens belong there. Real values live in a **dedicated secrets file**, and a dataset
+references one with `${secretKey}` written exactly where a literal value would otherwise go — see
+`config/secrets/README.md` for the full picture (including why an earlier version of this used a
+separate `emailKey`/`passwordKey` field shape and a `withRealCredentials()` wrapper every spec had
+to call, and why both were dropped); summary:
+
+- `config/secrets/<env>.secrets.json` (gitignored) — a **flat** `key -> value` bag
+  (`config/secretsLoader.ts`'s `SecretsBag`), loaded once into `ENV.SECRETS` (`config/envLoader.ts`).
+  Flat and generic on purpose: a login credential is _two_ keys (an email key + a password key), not
+  one nested object, so the exact same shape covers credentials, API keys, tokens — anything
+  sensitive — without a special case per secret type.
+- **A dataset author writes `${key}` as a value, nothing else** — e.g.
+  `"email": "${webValidUserEmail}"` right alongside `"password": "WrongPassword"` in the very same
+  object, identical shape either way (see `src/data/datasets/*/loginData.*`). No separate field name
+  for "this one's a secret", no import, no function to call from a spec.
+- `src/data/utils/secretInterpolation.ts`'s `interpolateSecrets()` recursively resolves every
+  `${...}` placeholder in a loaded dataset against `ENV.SECRETS`, wired into
+  `src/data/providers/BaseDataProvider.ts`'s `load()` — the one method all four providers
+  (json/yaml/csv/excel) share. This means **every** dataset gets placeholder resolution for free,
+  not just `loginData`, and a spec's `TestData.load<T>("fileName")` call is completely unchanged
+  from before secrets existed — verified live that YAML in particular parses `${...}` as a plain
+  string and not flow-mapping syntax (`{`/`}` are otherwise special in YAML).
+- Resolution happens once per dataset file, at load time — so it's whichever secret keys the _whole
+  file_ references that must be configured, not just the ones a given spec happens to touch (a
+  trade-off for "zero code in specs"; the previous getter-based lazy design avoided this but
+  required a wrapper call in every spec instead).
+- Adding a user (or any other secret) is a two-key addition to `<env>.secrets.json` and a `${key}`
+  reference in a dataset — never a code change. For real scale, populate that file from a CI secret
+  / secrets manager (Vault/AWS Secrets Manager/1Password Connect) instead of hand-editing it;
+  `getSecret()`'s lookup code doesn't change either way, only where the file's contents come from.
+- `<env>.secrets.json` is gitignored; `<env>.secrets.example.json` (placeholder values) is the
+  tracked template — copy one to the real filename and fill in real values locally, or populate the
+  real file from CI/a secrets manager instead of committing it.
+- A missing key fails loudly and specifically (`getSecret()` throws `Secret "X" is not defined. Add
+it to config/secrets/<env>.secrets.json...`) rather than silently loading `undefined` — verified
+  live (temporarily emptied the secrets file, confirmed the exact missing key is named, then
+  restored it and confirmed a normal run recovers).
+- `src/api/client/ApiEngine.ts`'s `redactBody()` scrubs `password`/`token`/`secret`-named fields
+  (case-insensitive) from what reaches `Logger`/Allure attachments — verified live in
+  `logs/execution.log` (`"password": "*****"`, `"token": "*****"`) — but this only protects
+  _logged/attached_ data; `send()` transmits the real, unredacted body. This is independent of the
+  secrets-file design above — it protects credentials in transit/observability, not at rest.
 
 ### Shared building blocks
 
@@ -207,7 +264,7 @@ app files became available at each stage. See git history / earlier design notes
 history if you need the mobile-web version back — reusing `src/pages/web/LoginPage.ts` against a
 mobile browser session is a small, well-understood change (swap `resolveAndroidTarget()`'s priority,
 no `ANDROID_APP_PATH`/`ANDROID_APP_PACKAGE` set) — but don't keep both wired up as parallel "mobile"
-specs at once: exactly one target is ever active per env config, and a spec for the *other* one will
+specs at once: exactly one target is ever active per env config, and a spec for the _other_ one will
 just fail every run, which is worse than not having it.
 
 - **What's under test is decided entirely by `config/environments/<env>.env`, never by editing
@@ -221,7 +278,7 @@ just fail every run, which is worse than not having it.
      **already installed** on the device (no artifact needed — the common case for CI images with
      the app pre-baked in).
   3. Neither set → mobile web (`browserName: "Chrome"` / `"Safari"`).
-  Currently `qa.env` sets *both* (1) and (2) for Android/iOS — (1) wins, per above.
+     Currently `qa.env` sets _both_ (1) and (2) for Android/iOS — (1) wins, per above.
 - **Locators (`src/locators/mobile/LoginPageLocators.ts`) were verified live, not guessed** — a
   scratch spec dumped `browser.getPageSource()` on a booted iOS simulator after a real login
   attempt (valid and invalid) to read the actual accessibility ids
@@ -246,6 +303,7 @@ just fail every run, which is worse than not having it.
 **Also verified live** against two booted iOS simulators earlier while this suite was still
 mobile-web (single-device and `IOS_UDIDS` parallel, both passing), which surfaced bugs worth knowing
 if mobile-web ever comes back or similar symptoms show up here:
+
 - A relative `browser.url(...)` needs `baseUrl` set on the mobile configs too, not just
   `wdio.web.conf.ts` — irrelevant to the current native suite (no navigation-by-URL at all), but
   `wdio.android.conf.ts`/`wdio.ios.conf.ts` still set it, harmlessly, in case mobile-web returns.
@@ -256,7 +314,7 @@ if mobile-web ever comes back or similar symptoms show up here:
   in **both** the web and native mobile page objects does this.
 - `IOS_UDIDS` parallel runs looked concurrent (both worker processes logged "RUNNING" at the same
   moment) but timestamps showed worker 1's session/tests didn't actually start until worker 0's had
-  *fully finished* — real serialization, not just a misleading log interleave. Root cause: both
+  _fully finished_ — real serialization, not just a misleading log interleave. Root cause: both
   devices' WebDriverAgent builds pointed at the same default Xcode `DerivedData` folder, and Xcode's
   build lock serializes concurrent `xcodebuild` invocations against one folder. Fixed with a unique
   `appium:derivedDataPath` per device index (`wdio.ios.conf.ts`'s `extraCapabilitiesForIndex`) —
@@ -299,7 +357,7 @@ code change.
   still runs the same four sequentially, for predictable, non-interleaved CI logs; `test:parallel` is
   for local iteration speed. Each platform's own failures don't kill the others (`concurrently`
   doesn't kill siblings on a non-zero exit by default), and the overall command's exit code reflects
-  whether *any* platform failed.
+  whether _any_ platform failed.
   - **Why `test:parallel` calls `wdio run ...` directly instead of `npm run test:web` /
     `npm run test:android` / etc.:** those per-platform scripts each carry their own
     `pretest:<name>` hook (`rm -rf allure-results`) for when they're run solo. Four of those firing
@@ -308,6 +366,93 @@ code change.
     before any of the four `wdio run` processes start; from there, parallel `@wdio/allure-reporter`
     writers safely coexist in one `allure-results/` folder (each result file is independently
     UUID-named — this is the same mechanism Allure uses to merge results from any multi-worker run).
+
+## CI/CD, linting, and BrowserStack
+
+### TypeScript is pinned to 6.0.3, not the ^7 line — deliberately
+
+`typescript-eslint` (the linter's TS support) doesn't support TypeScript 7.0 yet (a very new
+native-compiler preview release — `typescript-eslint`'s peer range is `>=4.8.4 <6.1.0`) — confirmed
+by actually trying to lint with TS 7 installed and hitting `typescript-eslint does not support TS
+7.0` immediately, not by reading a changelog. Downgraded to `6.0.3`, the newest stable release still
+in range, and reconfirmed `tsc --noEmit` passes identically at that version. If TypeScript is ever
+bumped again, check `npm view typescript-eslint peerDependencies` first — this isn't a one-time fix,
+it's a constraint that'll recur with any TS major bump ahead of the linting ecosystem's support.
+
+### ESLint + Prettier
+
+`eslint.config.js` (flat config) + `.prettierrc.json`. One real bug worth knowing about if the
+config ever gets restructured: `js.configs.recommended`/`tseslint.configs.recommended` **must** be
+scoped under `files: ["**/*.ts"]`, not applied at the top level — applied globally, TypeScript-only
+rules like `@typescript-eslint/no-require-imports` also flag `scripts/*.js` and `eslint.config.js`
+itself, both plain CommonJS Node scripts that are supposed to use `require()`. Caught this by
+actually running `npx eslint .` and seeing it flag the config's own `require()` calls, not by
+reasoning about it in advance.
+
+`npm run lint` / `lint:fix` / `format` / `format:check`. Both are wired into
+`.github/workflows/ci.yml`'s `lint-and-typecheck` job, which every other job depends on
+(`needs: lint-and-typecheck`).
+
+### CI (`.github/workflows/ci.yml`)
+
+Four jobs: `lint-and-typecheck` (always), `web` and `api` (self-contained, run on any
+`ubuntu-latest` runner — Chrome is preinstalled), `mobile-browserstack` (gated off by default, see
+below). `web`/`api` each write their own `config/secrets/qa.secrets.json` from repo secrets before
+running — least-privilege (the `web` job only gets web credentials, not api/BrowserStack ones) and
+via `env:` + `JSON.stringify` rather than string-interpolating a secret into a shell heredoc, which
+would silently break (or worse, generate malformed JSON) if a secret ever contained a `"` or `\` —
+verified this handles that correctly with deliberately adversarial test values before committing to
+it. Requires these configured under repo Settings → Secrets and variables → Actions:
+`WEB_VALID_USER_EMAIL`, `WEB_VALID_USER_PASSWORD`, `API_VALID_USER_EMAIL`, `API_VALID_USER_PASSWORD`.
+
+**What's actually verified vs. not:** the YAML was validated for correct structure (parsed with the
+project's own `yaml` dependency, confirmed job names/keys) and the secrets-writing logic was
+verified locally (including with adversarial special characters). What was **not** verified is an
+actual GitHub Actions run — this environment has no access to execute a real workflow, so treat the
+workflow as carefully-written-but-unexecuted until it's actually run once in GitHub.
+
+### BrowserStack App Automate (mobile device farm)
+
+`MOBILE_EXECUTION_TARGET=browserstack` (`config/environments/<env>.env`, default `local`) switches
+`wdio.android.conf.ts`/`wdio.ios.conf.ts` from a local Appium server + emulator/simulator to
+BrowserStack's cloud devices — see each file's `buildBrowserStackConfig()`. Uses the official
+`@wdio/browserstack-service`, not a hand-rolled hub connection: its `app` service option (a local
+file path) uploads the `.apk`/`.ipa` automatically, so there's no separate manual upload step or
+`appium:app` capability to set by hand.
+
+- `BROWSERSTACK_ANDROID_DEVICES`/`BROWSERSTACK_IOS_DEVICES` — `"DeviceName@OSVersion,DeviceName2@..."`
+  (`config/browserstackCapabilityBuilder.ts`'s `parseBrowserStackDevices()`), same single-vs-parallel
+  pattern as `ANDROID_UDIDS`/`IOS_UDIDS` for local execution, but BrowserStack allocates/queues
+  devices itself — no per-device port or `derivedDataPath` juggling needed here, unlike the local
+  path.
+- **Credentials (`browserstackUsername`/`browserstackAccessKey`) come from
+  `config/secrets/<env>.secrets.json` only** — read directly via `getSecret()` in
+  `wdio.android/ios.conf.ts`, never from `.env`, same rule as every other secret in this framework.
+  Not yet in the real (gitignored) secrets files — `getSecret()` will throw a clear "not defined"
+  error naming the missing key if BrowserStack mode is selected before they're added.
+- BrowserStack mode always requires `ANDROID_APP_PATH`/`IOS_APP_PATH` — "already installed" doesn't
+  meaningfully apply to BrowserStack's ephemeral cloud devices the way it does a persistent local
+  emulator, so `ANDROID_APP_PACKAGE`+`ANDROID_APP_ACTIVITY`/`IOS_BUNDLE_ID` alone aren't enough here
+  even though they are for local execution. Throws a specific config-load-time error if missing —
+  verified live (temporarily faked BrowserStack credentials and toggled the app path on/off,
+  confirmed both the successful single-device/parallel capability construction and the missing-path
+  error message).
+- **iOS real-device caveat**: BrowserStack's real-device cloud needs a signed `.ipa`, not an
+  iOS-_simulator_ `.app` bundle — `apps/swag.app` in this repo is a simulator build (see
+  `apps/README.md`) and will not install on a physical device. That's a build/signing concern
+  outside this framework's control, not something pointing `IOS_APP_PATH` at the right file solves.
+- **Two things this framework cannot supply on its own**, both called out directly in
+  `.github/workflows/ci.yml`'s `mobile-browserstack` job (gated behind the `BROWSERSTACK_ENABLED`
+  repo variable so a fresh clone/fork doesn't fail this job by default): (1) real BrowserStack
+  credentials — none were available in this session, so `config/secrets/*.secrets.json` has no
+  `browserstackUsername`/`browserstackAccessKey` entries, only the `.example` files document the
+  expected keys; (2) a way to fetch the app binary in CI, since `apps/` is gitignored and never
+  reaches a fresh checkout — the workflow has a placeholder "Fetch app build" step (that deliberately
+  exits 1 until replaced) showing the shape of what's needed, not a working implementation, because
+  this repo has no actual artifact-distribution mechanism to plug in. **Neither of these could be
+  verified against a real BrowserStack run in this session** — the capability-building code was
+  verified as thoroughly as possible without one (dry-run capability construction, both single- and
+  parallel-device, plus the error paths), but an actual BrowserStack session was not.
 
 ## Where this deliberately differs from Playwright
 

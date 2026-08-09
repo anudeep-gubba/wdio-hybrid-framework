@@ -24,13 +24,37 @@ interface MobileCapabilityInputBase {
 
 export type MobileTarget =
   /** Mobile web: automate a real browser (e.g. "Chrome" on Android, "Safari" on iOS). */
-  | { browserName: string; appPath?: undefined; appPackage?: undefined; appActivity?: undefined; bundleId?: undefined }
+  | {
+      browserName: string;
+      appPath?: undefined;
+      appPackage?: undefined;
+      appActivity?: undefined;
+      bundleId?: undefined;
+    }
   /** Native app: fresh install from a built artifact. */
-  | { appPath: string; browserName?: undefined; appPackage?: undefined; appActivity?: undefined; bundleId?: undefined }
+  | {
+      appPath: string;
+      browserName?: undefined;
+      appPackage?: undefined;
+      appActivity?: undefined;
+      bundleId?: undefined;
+    }
   /** Native app: already installed on the device — Android launches it by package + activity. */
-  | { appPackage: string; appActivity: string; browserName?: undefined; appPath?: undefined; bundleId?: undefined }
+  | {
+      appPackage: string;
+      appActivity: string;
+      browserName?: undefined;
+      appPath?: undefined;
+      bundleId?: undefined;
+    }
   /** Native app: already installed on the device — iOS launches it by bundle id. */
-  | { bundleId: string; browserName?: undefined; appPath?: undefined; appPackage?: undefined; appActivity?: undefined };
+  | {
+      bundleId: string;
+      browserName?: undefined;
+      appPath?: undefined;
+      appPackage?: undefined;
+      appActivity?: undefined;
+    };
 
 export type MobileCapabilityInput = MobileCapabilityInputBase & MobileTarget;
 

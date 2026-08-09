@@ -1,11 +1,11 @@
 {
   "web": {
     "validUser": {
-      "email": "anudeep.web@gmail.com",
-      "password": "Test@1234"
+      "email": "${webValidUserEmail}",
+      "password": "${webValidUserPassword}"
     },
     "invalidPassword": {
-      "email": "anudeep.web@gmail.com",
+      "email": "${webValidUserEmail}",
       "password": "WrongPassword"
     },
     "invalidEmail": {
@@ -15,8 +15,8 @@
   },
   "api": {
     "validUser": {
-      "email": "anudeep.api@gmail.com",
-      "password": "Test@1234"
+      "email": "${apiValidUserEmail}",
+      "password": "${apiValidUserPassword}"
     }
   },
   "mobile": {

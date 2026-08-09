@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  TEST_ENV: qa
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+
+  web:
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    env:
+      HEADLESS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # config/secrets/*.json is gitignored (never committed — see config/secrets/README.md), so
+      # CI writes it from repo secrets before running. Only the keys this job's specs actually
+      # touch (test/specs/web/login.spec.ts) — least-privilege, not a copy of every secret.
+      # Secrets are passed via `env:` (masked in logs) and JSON.stringify'd rather than
+      # interpolated into a shell heredoc — safe regardless of what characters a secret contains.
+      # Requires WEB_VALID_USER_EMAIL / WEB_VALID_USER_PASSWORD configured under
+      # Settings -> Secrets and variables -> Actions in this repo.
+      - name: Write secrets file
+        env:
+          WEB_VALID_USER_EMAIL: ${{ secrets.WEB_VALID_USER_EMAIL }}
+          WEB_VALID_USER_PASSWORD: ${{ secrets.WEB_VALID_USER_PASSWORD }}
+        run: |
+          mkdir -p config/secrets
+          node -e "
+            require('fs').writeFileSync('config/secrets/qa.secrets.json', JSON.stringify({
+              webValidUserEmail: process.env.WEB_VALID_USER_EMAIL,
+              webValidUserPassword: process.env.WEB_VALID_USER_PASSWORD,
+            }, null, 2));
+          "
+
+      - run: npm run test:web
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-web
+          path: allure-results
+          if-no-files-found: ignore
+
+  api:
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    env:
+      HEADLESS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Requires API_VALID_USER_EMAIL / API_VALID_USER_PASSWORD configured under
+      # Settings -> Secrets and variables -> Actions in this repo.
+      - name: Write secrets file
+        env:
+          API_VALID_USER_EMAIL: ${{ secrets.API_VALID_USER_EMAIL }}
+          API_VALID_USER_PASSWORD: ${{ secrets.API_VALID_USER_PASSWORD }}
+        run: |
+          mkdir -p config/secrets
+          node -e "
+            require('fs').writeFileSync('config/secrets/qa.secrets.json', JSON.stringify({
+              apiValidUserEmail: process.env.API_VALID_USER_EMAIL,
+              apiValidUserPassword: process.env.API_VALID_USER_PASSWORD,
+            }, null, 2));
+          "
+
+      - run: npm run test:api
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-api
+          path: allure-results
+          if-no-files-found: ignore
+
+  mobile-browserstack:
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    # Gated on a repository VARIABLE (Settings -> Secrets and variables -> Actions -> Variables),
+    # not a secret directly — this job is otherwise structurally ready but has two real
+    # prerequisites this workflow can't supply on its own (see the steps below), so it stays off
+    # by default rather than failing every run in a fresh clone/fork. Set the
+    # BROWSERSTACK_ENABLED repo variable to "true" once both are in place.
+    if: ${{ vars.BROWSERSTACK_ENABLED == 'true' }}
+    env:
+      MOBILE_EXECUTION_TARGET: browserstack
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Prerequisite 1: an app binary. apps/ is gitignored (see apps/README.md) — the .apk this
+      # job needs never lives in git, so a fresh checkout doesn't have it. Replace this step with
+      # however your team actually distributes build artifacts (an internal artifact store, a
+      # GitHub Release asset, S3, a prior build job's output, …) — this placeholder only shows the
+      # shape of what needs to happen.
+      - name: Fetch app build
+        run: |
+          mkdir -p apps
+          echo "Replace this step with your real app-artifact download, e.g.:"
+          echo '  curl -L -o apps/swaglabs.apk "$APP_DOWNLOAD_URL"'
+          # curl -L -o apps/swaglabs.apk "${{ secrets.APP_DOWNLOAD_URL }}"
+          exit 1 # remove once the real download step above is in place
+
+      # Prerequisite 2: BrowserStack credentials. Requires BROWSERSTACK_USERNAME /
+      # BROWSERSTACK_ACCESS_KEY configured under Settings -> Secrets and variables -> Actions.
+      - name: Write secrets file
+        env:
+          BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+          BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+        run: |
+          mkdir -p config/secrets
+          node -e "
+            require('fs').writeFileSync('config/secrets/qa.secrets.json', JSON.stringify({
+              browserstackUsername: process.env.BROWSERSTACK_USERNAME,
+              browserstackAccessKey: process.env.BROWSERSTACK_ACCESS_KEY,
+            }, null, 2));
+          "
+
+      - run: npm run test:android
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-mobile
+          path: allure-results
+          if-no-files-found: ignore

@@ -1,0 +1,10 @@
+node_modules/
+apps/
+allure-results/
+allure-report/
+logs/
+dist/
+build/
+coverage/
+package-lock.json
+src/data/datasets/**/*.xlsx

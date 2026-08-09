@@ -5,10 +5,7 @@ export interface FutureDateOptions {
   milliseconds?: number;
 }
 
-export function getFutureDateIso(
-  days = 1,
-  options: FutureDateOptions = {},
-): string {
+export function getFutureDateIso(days = 1, options: FutureDateOptions = {}): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + days);
   date.setUTCHours(

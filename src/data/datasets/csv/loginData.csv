@@ -1,12 +1,12 @@
 key,value,type
-web.validUser.email,anudeep.web@gmail.com,string
-web.validUser.password,Test@1234,string
-web.invalidPassword.email,anudeep.web@gmail.com,string
+web.validUser.email,${webValidUserEmail},string
+web.validUser.password,${webValidUserPassword},string
+web.invalidPassword.email,${webValidUserEmail},string
 web.invalidPassword.password,WrongPassword,string
 web.invalidEmail.email,invalid@test.com,string
 web.invalidEmail.password,Password123,string
-api.validUser.email,anudeep.api@gmail.com,string
-api.validUser.password,Test@1234,string
+api.validUser.email,${apiValidUserEmail},string
+api.validUser.password,${apiValidUserPassword},string
 mobile.validUser.username,standard_user,string
 mobile.validUser.password,secret_sauce,string
 mobile.invalidPassword.username,standard_user,string

@@ -20,9 +20,7 @@ export class RetryPolicy {
       } catch (error) {
         currentAttempt++;
 
-        const canRetry =
-          currentAttempt <= retries &&
-          (shouldRetry ? shouldRetry(error) : true);
+        const canRetry = currentAttempt <= retries && (shouldRetry ? shouldRetry(error) : true);
         if (!canRetry) {
           throw error;
         }

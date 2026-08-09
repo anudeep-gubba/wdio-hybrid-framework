@@ -6,20 +6,35 @@ node_modules/
 # ======================================================
 # Environment Variables
 # ======================================================
-.env
-.env.*
-!config/environments/*.env
+# config/environments/*.env is plain configuration (URLs, timeouts, device names) — no secrets
+# belong here (see Secrets section below). Still gitignored as a blanket rule regardless, so a
+# secret accidentally added here later doesn't get committed by default. Only the .example
+# templates are tracked; copy one to the real filename and adjust locally/in CI.
+# .env
+# .env.*
+# config/environments/*.env
+# !config/environments/*.env.example
+
+# ======================================================
+# Secrets
+# ======================================================
+# config/secrets/<env>.secrets.json holds real credentials/API keys/etc. — see
+# config/secretsLoader.ts and src/data/credentialOverrides.ts. Only the .example templates
+# (placeholder values) are tracked; copy one to the real filename and fill in real values
+# locally, or populate the real file from a CI secret / secrets manager instead.
+# config/secrets/*.json
+# !config/secrets/*.secrets.example.json
 
 # ======================================================
 # WebdriverIO / Appium
 # ======================================================
 wdio-logs/
-*.apk
-*.ipa
-*.app/
+# *.apk
+# *.ipa
+# *.app/
 # apps/ holds native app builds locally (see apps/README.md) — never committed.
-apps/*
-!apps/README.md
+# apps/*
+# !apps/README.md
 
 # ======================================================
 # Allure

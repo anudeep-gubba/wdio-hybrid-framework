@@ -37,7 +37,10 @@ function setPath(target: Record<string, unknown>, path: string[], value: unknown
 }
 
 function coerce(value: unknown, type: unknown): unknown {
-  const normalizedType = String(type ?? "").trim().toLowerCase() || "string";
+  const normalizedType =
+    String(type ?? "")
+      .trim()
+      .toLowerCase() || "string";
 
   switch (normalizedType) {
     case "number":

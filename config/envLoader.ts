@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 import path from "path";
 
+import { loadSecrets } from "./secretsLoader.js";
+
 export type TestDataFormat = "json" | "yaml" | "csv" | "excel";
 
 const environment = process.env.TEST_ENV ?? "qa";
@@ -45,7 +47,8 @@ function resolveAppPath(key: string): string {
     return "";
   }
 
-  const relativeToRepoRoot = value.includes("/") || value.includes("\\") ? value : path.join("apps", value);
+  const relativeToRepoRoot =
+    value.includes("/") || value.includes("\\") ? value : path.join("apps", value);
 
   return path.resolve(process.cwd(), relativeToRepoRoot);
 }
@@ -66,6 +69,14 @@ export const ENV = Object.freeze({
   EXPECT_TIMEOUT: Number(process.env.EXPECT_TIMEOUT ?? 10000),
 
   LOG_LEVEL: process.env.LOG_LEVEL ?? "info",
+
+  // Real secrets — credentials today, API keys/tokens/whatever else later — never live in
+  // config/environments/*.env (plain config) or src/data/datasets/ (committed test data).
+  // config/secrets/<env>.secrets.json is a flat `key -> value` bag; a dataset value written as
+  // `${someKey}` resolves against this automatically (src/data/utils/secretInterpolation.ts, wired
+  // into every provider via src/data/providers/BaseDataProvider.ts) — see config/secrets/README.md.
+  // Scales to any number of secrets without touching code: add a key to the JSON file, reference it.
+  SECRETS: Object.freeze(loadSecrets(environment)),
 
   WEB: Object.freeze({
     // How many spec files run in parallel Chrome sessions. `npm run test:web` with the default
@@ -107,5 +118,28 @@ export const ENV = Object.freeze({
       BUNDLE_ID: process.env.IOS_BUNDLE_ID ?? "",
       APP_PATH: resolveAppPath("IOS_APP_PATH"),
     }),
+  }),
+
+  // Where mobile tests actually run — a device farm choice, not a secret, so it's plain config
+  // here rather than in config/secrets/. "local" (default) is everything above: a local Appium
+  // server + a booted emulator/simulator. "browserstack" runs on BrowserStack App Automate
+  // instead — see config/browserstackCapabilityBuilder.ts and wdio.android/ios.conf.ts.
+  MOBILE_EXECUTION_TARGET: (process.env.MOBILE_EXECUTION_TARGET === "browserstack"
+    ? "browserstack"
+    : "local") as "local" | "browserstack",
+
+  BROWSERSTACK: Object.freeze({
+    // "DeviceName@OSVersion,DeviceName2@OSVersion2" — see
+    // config/browserstackCapabilityBuilder.ts's parseBrowserStackDevices(). One entry runs
+    // single-device; more than one runs in parallel (BrowserStack allocates devices itself, no
+    // local port/derivedDataPath juggling needed).
+    ANDROID_DEVICES: process.env.BROWSERSTACK_ANDROID_DEVICES ?? "",
+    IOS_DEVICES: process.env.BROWSERSTACK_IOS_DEVICES ?? "",
+    // `||`, not `??`: config/environments/*.env sets these to an explicit empty string when left
+    // blank (documented as "leave empty to use the default"), not undefined — `??` only falls
+    // back on null/undefined, so it would silently keep the empty string instead of defaulting.
+    // Verified live: BUILD_NAME came out as "" instead of "local-qa" with `??` before this fix.
+    PROJECT_NAME: process.env.BROWSERSTACK_PROJECT_NAME || "wdio-hybrid-framework",
+    BUILD_NAME: process.env.BROWSERSTACK_BUILD_NAME || `local-${environment}`,
   }),
 });

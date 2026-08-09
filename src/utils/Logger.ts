@@ -5,9 +5,7 @@ const consoleFormat = winston.format.combine(
   winston.format.timestamp({
     format: "YYYY-MM-DD HH:mm:ss",
   }),
-  winston.format.printf(
-    ({ timestamp, level, message }) => `${timestamp} ${level}: ${message}`,
-  ),
+  winston.format.printf(({ timestamp, level, message }) => `${timestamp} ${level}: ${message}`),
 );
 
 const fileFormat = winston.format.combine(
