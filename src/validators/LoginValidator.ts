@@ -12,12 +12,29 @@ export class LoginValidator {
     expect(currentUrl).not.toContain("/login");
   }
 
-  /** Native mobile (Swag Labs demo app, via src/pages/mobile/LoginPage.ts). */
-  static expectMobileLoginFailed(message: string): void {
-    expect(message).toContain(Messages.MOBILE_LOGIN_FAILURE);
+  /**
+   * Native mobile (eventhub app, via src/pages/mobile/LoginPage.ts). Unlike Web, this build's
+   * login always succeeds regardless of password (mock auth) — negative cases are Flutter's own
+   * client-side form validation, so these assert on the validation UI's *presence* (a boolean),
+   * not a message string.
+   */
+  static expectMobileLoginSuccess(isHomeDisplayed: boolean): void {
+    expect(isHomeDisplayed).toBe(true);
   }
 
-  static expectMobileLoginSuccess(isLoginSuccessful: boolean): void {
-    expect(isLoginSuccessful).toBe(true);
+  static expectMobileStillOnLoginScreen(isLoginDisplayed: boolean): void {
+    expect(isLoginDisplayed).toBe(true);
+  }
+
+  static expectMobileEmailRequiredErrorShown(isDisplayed: boolean): void {
+    expect(isDisplayed).toBe(true);
+  }
+
+  static expectMobilePasswordRequiredErrorShown(isDisplayed: boolean): void {
+    expect(isDisplayed).toBe(true);
+  }
+
+  static expectMobileInvalidEmailErrorShown(isDisplayed: boolean): void {
+    expect(isDisplayed).toBe(true);
   }
 }

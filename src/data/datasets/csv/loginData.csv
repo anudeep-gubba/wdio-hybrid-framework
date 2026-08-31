@@ -7,7 +7,11 @@ web.invalidEmail.email,invalid@test.com,string
 web.invalidEmail.password,Password123,string
 api.validUser.email,${apiValidUserEmail},string
 api.validUser.password,${apiValidUserPassword},string
-mobile.validUser.username,standard_user,string
-mobile.validUser.password,secret_sauce,string
-mobile.invalidPassword.username,standard_user,string
-mobile.invalidPassword.password,wrong_password,string
+mobile.validUser.email,${mobileValidUserEmail},string
+mobile.validUser.password,${mobileValidUserPassword},string
+mobile.incorrectPassword.email,${mobileValidUserEmail},string
+mobile.incorrectPassword.password,DefinitelyTheWrongPassword1!,string
+mobile.blankCredentials.email,,string
+mobile.blankCredentials.password,,string
+mobile.malformedEmail.email,not-an-email,string
+mobile.malformedEmail.password,SomePassword1!,string
