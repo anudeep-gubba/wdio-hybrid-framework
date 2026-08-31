@@ -21,12 +21,20 @@
   },
   "mobile": {
     "validUser": {
-      "username": "standard_user",
-      "password": "secret_sauce"
+      "email": "${mobileValidUserEmail}",
+      "password": "${mobileValidUserPassword}"
     },
-    "invalidPassword": {
-      "username": "standard_user",
-      "password": "wrong_password"
+    "incorrectPassword": {
+      "email": "${mobileValidUserEmail}",
+      "password": "DefinitelyTheWrongPassword1!"
+    },
+    "blankCredentials": {
+      "email": "",
+      "password": ""
+    },
+    "malformedEmail": {
+      "email": "not-an-email",
+      "password": "SomePassword1!"
     }
   }
 }

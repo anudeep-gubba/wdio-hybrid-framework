@@ -133,8 +133,8 @@ jobs:
         run: |
           mkdir -p apps
           echo "Replace this step with your real app-artifact download, e.g.:"
-          echo '  curl -L -o apps/swaglabs.apk "$APP_DOWNLOAD_URL"'
-          # curl -L -o apps/swaglabs.apk "${{ secrets.APP_DOWNLOAD_URL }}"
+          echo '  curl -L -o apps/eventhub-app-release.apk "$APP_DOWNLOAD_URL"'
+          # curl -L -o apps/eventhub-app-release.apk "${{ secrets.APP_DOWNLOAD_URL }}"
           exit 1 # remove once the real download step above is in place
 
       # Prerequisite 2: BrowserStack credentials. Requires BROWSERSTACK_USERNAME /

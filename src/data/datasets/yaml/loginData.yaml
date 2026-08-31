@@ -18,8 +18,14 @@ api:
 
 mobile:
   validUser:
-    username: standard_user
-    password: secret_sauce
-  invalidPassword:
-    username: standard_user
-    password: wrong_password
+    email: ${mobileValidUserEmail}
+    password: ${mobileValidUserPassword}
+  incorrectPassword:
+    email: ${mobileValidUserEmail}
+    password: DefinitelyTheWrongPassword1!
+  blankCredentials:
+    email: ""
+    password: ""
+  malformedEmail:
+    email: not-an-email
+    password: SomePassword1!

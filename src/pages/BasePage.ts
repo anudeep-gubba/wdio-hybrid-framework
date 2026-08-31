@@ -1,4 +1,4 @@
-import { browser, expect } from "@wdio/globals";
+import { $, browser, expect } from "@wdio/globals";
 
 import { Logger } from "../utils/Logger.js";
 
@@ -42,5 +42,22 @@ export abstract class BasePage {
 
   protected getBrowser() {
     return browser;
+  }
+
+  /**
+   * Waits for `selector` to become displayed, returning `false` (rather than throwing) if it
+   * never does within the timeout. Native mobile page objects use this for every `isDisplayed()`
+   * — verified live: a plain `$(selector).isDisplayed()` is an instant, non-waiting check in WDIO
+   * (unlike `expect(...).toBeDisplayed()`), so calling it right after a screen transition (e.g.
+   * login navigating to Home) reads stale state and reports `false` even though the target screen
+   * genuinely does appear moments later. Not meaningful for web page objects, which don't call it.
+   */
+  protected async isDisplayedWithinTimeout(selector: string): Promise<boolean> {
+    try {
+      await $(selector).waitForDisplayed();
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

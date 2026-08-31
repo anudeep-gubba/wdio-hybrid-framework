@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A hybrid WebdriverIO automation framework covering **Web** + **API** for EventHub
-(`https://eventhub.rahulshettyacademy.com`) and **Mobile** for a separate native app (Sauce Labs'
-"Swag Labs" demo app, `apps/swaglabs.apk`/`apps/swag.app`), through distinct layered architectures
-that share a common test-data and reporting foundation. TypeScript, `strict` mode, CommonJS/NodeNext
-module resolution.
+A hybrid WebdriverIO automation framework covering **Web** + **API** + **Mobile** for EventHub
+(`https://eventhub.rahulshettyacademy.com`) — Mobile drives EventHub's own native mobile client (a
+Flutter build, `apps/eventhub-app-release.apk`/`apps/eventhub-app-simulator.app`), the same product
+Web/API cover, through distinct layered architectures that share a common test-data and reporting
+foundation. TypeScript, `strict` mode, CommonJS/NodeNext module resolution.
 
 It's the WebdriverIO sibling of a Playwright framework at `../playwright-framework` — same layered
 shape (page objects / components / validators / API facade / data providers / constants), adapted
@@ -91,10 +91,12 @@ not import each other's page objects/services except in explicit hybrid flows.
 Flow: `test/specs/web|mobile/*.spec.ts` → page object (`new LoginPage()`, no fixture injection) →
 `src/pages/web|mobile/*.ts` (extends `BasePage`) → `src/components/*` (extends `BaseComponent`, wraps
 a WDIO `ChainablePromiseElement`) → `src/locators/web|mobile/*.ts`. Web and mobile are **different
-apps** (EventHub vs. the Swag Labs demo app) with their own page objects and locators — they only
-share the layers below that: `BasePage`, `BaseComponent`/components, `LoginValidator`, reporting.
-(This wasn't always true — when mobile meant driving EventHub through a mobile browser, web and
-mobile genuinely shared one `LoginPage`. See "Mobile is a native app" below for that history.)
+clients of the same product** (EventHub's web app vs. its native Flutter mobile app) with their own
+page objects and locators — they only share the layers below that: `BasePage`, `BaseComponent`/
+components, `LoginValidator`, reporting. (When mobile meant driving EventHub through a mobile
+browser instead, web and mobile genuinely shared one `LoginPage`; when it meant the unrelated Swag
+Labs demo app, they shared nothing above `BasePage`/`BaseComponent`. See "Mobile is a native app"
+below for that history.)
 
 - `src/pages/BasePage.ts` — shared navigation/assertion primitives (`navigate`, `verifyUrl`,
   `verifyTitle`, `waitForLoad`), wrapping WDIO's `browser` global. Page objects extend this and
@@ -155,7 +157,7 @@ logical dataset must exist in every format.
 
 `JsonProvider`/`YamlProvider` parse the file's native nested structure directly. `CsvProvider`/
 `ExcelProvider` instead read flat `key,value,type` rows (header required) — `key` is a dot-path (e.g.
-`mobile.validUser.username`), `type` is optional and one of `string` (default) | `number` |
+`mobile.validUser.email`), `type` is optional and one of `string` (default) | `number` |
 `boolean`. Both are rebuilt into the same nested shape via `unflattenRows` in
 `src/data/utils/tabularData.ts`, so all four formats produce identical objects and the same data
 models work unchanged. Always set an explicit `type` for non-string values — CSV/Excel values are
@@ -169,23 +171,28 @@ Current dataset: `loginData.{json,yaml,csv,xlsx}` + `src/data/models/LoginData.t
 {
   web:    { validUser: User, invalidPassword: User, invalidEmail: User }
   api:    { validUser: User }
-  mobile: { validUser, invalidPassword }   // MobileUser { username, password } — Swag Labs seed accounts
+  mobile: { validUser, incorrectPassword, blankCredentials, malformedEmail }   // MobileUser { email, password }
 }
 ```
 
 Every field is a plain value — `TestData.load<LoginData>("loginData")` alone returns real, usable
-credentials, no wrapper call needed by a spec. `mobile` uses `MobileUser` (`src/models/MobileUser.ts`)
-— `standard_user`/`secret_sauce`, one of the Swag Labs app's own fixed seed accounts (local to each
-app instance, no shared backend session, _publicly documented_ by Sauce Labs), so those are written
-as plain literals directly in the dataset. `web`/`api`'s real EventHub credentials are **never**
-literals in this dataset — see "Real secrets never live in `.env` or committed fixtures" below for
-how `${webValidUserEmail}`-style placeholders resolve to them automatically.
+credentials, no wrapper call needed by a spec. `mobile` uses `MobileUser`
+(`src/models/MobileUser.ts`) — real, secret-backed EventHub credentials
+(`${mobileValidUserEmail}`/`${mobileValidUserPassword}`) for `validUser`/`incorrectPassword`, same
+as `web`/`api` below; `blankCredentials`/`malformedEmail` are plain literals (client-side validation
+inputs, not real accounts) — see "Real secrets never live in `.env` or committed fixtures" below for
+how `${webValidUserEmail}`-style placeholders resolve automatically.
 
 Second dataset: `eventData.{json,yaml,csv,xlsx}` + `src/data/models/EventData.ts` — `{ createEvent,
 updateEvent }`, both typed as `CreateEventRequest`/`UpdateEventRequest` (`src/api/requests/
 EventRequest.ts`) so the payload shape stays in sync with the service layer. `eventDate` in the
 dataset is a static placeholder; `test/specs/api/event.spec.ts` overwrites it at runtime via
 `getFutureDateIso()` rather than relying on a hardcoded date staying in the future forever.
+
+Third dataset: `mobileBookingData.{json,yaml,csv,xlsx}` + `src/data/models/MobileBookingData.ts` —
+`{ fullName, phone }`, the attendee details `test/specs/mobile/eventBooking.spec.ts` types into the
+native app's booking form (`src/pages/mobile/EventDetailPage.ts`). Plain literals, not secrets — the
+attendee email is pre-filled from the logged-in account instead.
 
 When adding a new dataset, add the file for every supported format, add a typed model in
 `src/data/models/`, and export it from `src/data/models/index.ts`.
@@ -254,18 +261,18 @@ it to config/secrets/<env>.secrets.json...`) rather than silently loading `undef
   fixture-level before/after logic would live in a Playwright framework; WDIO has no fixtures, so it
   lives in the test-runner lifecycle hooks instead.
 
-### Mobile is a native app — the Sauce Labs "Swag Labs" demo app
+### Mobile is a native app — eventhub's own mobile client
 
-`test/specs/mobile/login.spec.ts` drives `src/pages/mobile/LoginPage.ts`, a real native-app page
-object, against `apps/swaglabs.apk` (Android) / `apps/swag.app` (iOS) — `com.swaglabsmobileapp` /
-`com.saucelabs.SwagLabsMobileApp`. This is the framework's **second** mobile target, not the first:
-it went placeholder-native-scaffolding → mobile-web (EventHub, via Chrome/Safari) → this, as real
-app files became available at each stage. See git history / earlier design notes in this file's
-history if you need the mobile-web version back — reusing `src/pages/web/LoginPage.ts` against a
-mobile browser session is a small, well-understood change (swap `resolveAndroidTarget()`'s priority,
-no `ANDROID_APP_PATH`/`ANDROID_APP_PACKAGE` set) — but don't keep both wired up as parallel "mobile"
-specs at once: exactly one target is ever active per env config, and a spec for the _other_ one will
-just fail every run, which is worse than not having it.
+`test/specs/mobile/*.spec.ts` drives real native-app page objects (`src/pages/mobile/`) against
+`apps/eventhub-app-release.apk` (Android) / `apps/eventhub-app-simulator.app` (iOS) — a Flutter
+build of EventHub's own mobile app, the same product the Web/API suites already cover. This is the
+framework's **third** mobile target, not the second: it went placeholder-native-scaffolding →
+mobile-web (EventHub, via Chrome/Safari) → the Sauce Labs "Swag Labs" demo app (a placeholder,
+chosen only because it was the first real `.apk`/`.app` available) → this. See git history / earlier
+design notes in this file's history for either earlier version if you ever need it back — but don't
+keep more than one wired up as parallel "mobile" specs at once: exactly one target is ever active
+per env config, and a spec for a different one will just fail every run, which is worse than not
+having it.
 
 - **What's under test is decided entirely by `config/environments/<env>.env`, never by editing
   `wdio.android.conf.ts`/`wdio.ios.conf.ts`.** `resolveAndroidTarget()`/`resolveIosTarget()` in
@@ -278,27 +285,44 @@ just fail every run, which is worse than not having it.
      **already installed** on the device (no artifact needed — the common case for CI images with
      the app pre-baked in).
   3. Neither set → mobile web (`browserName: "Chrome"` / `"Safari"`).
-     Currently `qa.env` sets _both_ (1) and (2) for Android/iOS — (1) wins, per above.
-- **Locators (`src/locators/mobile/LoginPageLocators.ts`) were verified live, not guessed** — a
-  scratch spec dumped `browser.getPageSource()` on a booted iOS simulator after a real login
-  attempt (valid and invalid) to read the actual accessibility ids
-  (`~test-Username`/`~test-Password`/`~test-LOGIN`/`~test-Error message`/`~test-PRODUCTS`) and the
-  actual error copy off the real screen, the same way `src/locators/web/LoginPageLocators.ts` was
-  verified against real rendered HTML earlier. **Confirmed on iOS only** — no Android emulator was
-  booted at verification time. This app is React Native and typically exposes the same testID as the
-  accessibility id on both platforms, so these are expected to hold on Android unchanged, but that's
-  an expectation, not something this session verified — check the first Android run's actual result
-  rather than assuming.
-- **App state resets between tests via `browser.reloadSession()`** (`login.spec.ts`'s `beforeEach`).
-  Both tests share one app session per device (`wdio:maxInstances: 1` per capability), and a
-  successful login leaves the app on the products screen — a login test running right after it would
-  find no login form. `reloadSession()` relaunches the app fresh before every test rather than
-  depending on test order for isolation.
-- **Credentials are the app's own fixed seed accounts** (`standard_user`/`secret_sauce`, per
-  `src/data/datasets/*/loginData.*`'s `mobile` section — see `MobileUser` in `src/models/`), local to
-  each app instance with no shared backend session — unlike `web`/`api`'s real EventHub accounts,
-  there's no reason to use different credentials per platform/device here, so there's only one
-  `mobile.validUser`/`mobile.invalidPassword`, not a per-platform split.
+     `qa.env` only ever sets (1) for this app — there's no known package/activity or bundle id to
+     launch an already-installed copy by, so (2) is left empty and (1) always wins.
+- **Locators (`src/locators/mobile/*.ts`) were verified live, not guessed** — a scratch spec dumped
+  `browser.getPageSource()` on a booted iOS simulator after real login/browse/booking attempts to
+  read the actual accessibility ids and error copy off the real screens, the same way
+  `src/locators/web/LoginPageLocators.ts` was verified against real rendered HTML earlier. This app
+  is Flutter, not native views: one Flutter Semantics tree drives both iOS `accessibilityId` and
+  Android `content-desc` through the same `~selector` strategy for most elements, but two things
+  genuinely differ per platform (see `src/locators/mobile/PlatformLocator.ts`) — an empty text
+  field's placeholder lives in iOS's `name` vs. Android's `hint` attribute, and any XPath needs a
+  platform-specific element class name (`XCUIElementType*` vs. `android.view.View`/
+  `android.widget.*`, since Flutter renders its own widgets rather than native ones per platform).
+  **Confirmed on iOS only** — no Android emulator was booted at verification time; check the first
+  Android run's actual result rather than assuming the Android-side XPaths hold unchanged.
+- **This build's login always succeeds regardless of password** (mock auth, not a real backend
+  check) — `src/pages/mobile/LoginPage.ts`'s class doc has the detail. "Negative login" here means
+  Flutter's own client-side form validation (blank fields, a malformed email), not a
+  server-rejected wrong password; a genuinely wrong password is its own _positive_ test case
+  (`mobile.incorrectPassword` in `loginData`) instead.
+- **App state resets between tests via `browser.reloadSession()`** (every mobile spec's
+  `beforeEach`), plus explicit `LoginPage.loginIfNeeded()`/`HomePage.logoutIfLoggedIn()` guards —
+  this app's driver capabilities don't request a fresh app-data reset on every session, so
+  app-level login state can otherwise persist across tests in the same run (a successful login
+  leaves the app on the Home screen, which would break a login test running right after it).
+- **Credentials are real, secret-backed EventHub credentials** (`${mobileValidUserEmail}`/
+  `${mobileValidUserPassword}`, resolved from `config/secrets/<env>.secrets.json` — see "Real
+  secrets never live in `.env` or committed fixtures" above), unlike the old Swag Labs suite's
+  fixed, publicly-documented demo seed accounts. There's still only one `mobile.validUser`, not a
+  per-platform split, for the same reason `web`/`api` don't split either — one account, one shared
+  backend.
+- **Event cards are one leaf element each**, with the whole card's text glued together with `\n`
+  (`src/components/mobile/EventCardComponent.ts` parses lines rather than locating children) — and
+  the "Book Now" button on each card is a _sibling_ of the card, not a descendant, so it's found via
+  a page-wide flat list indexed by card position instead of scoped under the card's own root.
+- **The booking form's fields load below the fold and need a scroll**, and a Return keystroke
+  appended to the same `setValue` call (not a separate follow-up command) is what actually dismisses
+  the on-screen keyboard in this build without hitting a stale-element error — see
+  `src/pages/mobile/EventDetailPage.ts`'s `typeAndDismissKeyboard()` doc.
 
 **Also verified live** against two booted iOS simulators earlier while this suite was still
 mobile-web (single-device and `IOS_UDIDS` parallel, both passing), which surfaced bugs worth knowing
@@ -310,8 +334,10 @@ if mobile-web ever comes back or similar symptoms show up here:
 - Reading a status/error label's text right after triggering it can race the async render — poll the
   actual text (`browser.waitUntil` on non-empty `.text()`) rather than the element's `isVisible()`,
   which isn't a reliable "has content yet" signal on every driver (confirmed: an empty container
-  reports displayed on iOS Safari/XCUITest but not on desktop Chrome). `LoginPage.getErrorMessage()`
-  in **both** the web and native mobile page objects does this.
+  reports displayed on iOS Safari/XCUITest but not on desktop Chrome). `src/pages/web/LoginPage.ts`'s
+  `getErrorMessage()` still does this for Web; the current native mobile suite doesn't have an
+  equivalent free-text error message to poll for (its negative cases are boolean validation-element
+  visibility instead), so this pattern is Web-only for now.
 - `IOS_UDIDS` parallel runs looked concurrent (both worker processes logged "RUNNING" at the same
   moment) but timestamps showed worker 1's session/tests didn't actually start until worker 0's had
   _fully finished_ — real serialization, not just a misleading log interleave. Root cause: both
@@ -438,9 +464,10 @@ file path) uploads the `.apk`/`.ipa` automatically, so there's no separate manua
   confirmed both the successful single-device/parallel capability construction and the missing-path
   error message).
 - **iOS real-device caveat**: BrowserStack's real-device cloud needs a signed `.ipa`, not an
-  iOS-_simulator_ `.app` bundle — `apps/swag.app` in this repo is a simulator build (see
-  `apps/README.md`) and will not install on a physical device. That's a build/signing concern
-  outside this framework's control, not something pointing `IOS_APP_PATH` at the right file solves.
+  iOS-_simulator_ `.app` bundle — `apps/eventhub-app-simulator.app` in this repo is a simulator
+  build (see `apps/README.md`) and will not install on a physical device. That's a build/signing
+  concern outside this framework's control, not something pointing `IOS_APP_PATH` at the right file
+  solves.
 - **Two things this framework cannot supply on its own**, both called out directly in
   `.github/workflows/ci.yml`'s `mobile-browserstack` job (gated behind the `BROWSERSTACK_ENABLED`
   repo variable so a fresh clone/fork doesn't fail this job by default): (1) real BrowserStack

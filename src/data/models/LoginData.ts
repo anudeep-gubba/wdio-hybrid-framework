@@ -19,12 +19,20 @@ export interface LoginData {
     validUser: User;
   };
 
-  // Native app (Swag Labs demo app — see src/pages/mobile/LoginPage.ts). Its seed accounts
-  // (standard_user/locked_out_user/problem_user, all with password secret_sauce) are fixed,
-  // local-only, *publicly documented* demo credentials with no shared backend session/token —
-  // not secrets, so plain literals here are fine, unlike `web`/`api` above.
+  // Native app — eventhub's own mobile client (see src/pages/mobile/LoginPage.ts), the same
+  // product `web`/`api` already cover, so `validUser`/`incorrectPassword` are real, secret-backed
+  // EventHub credentials (${mobileValidUserEmail}/${mobileValidUserPassword}) like `web`/`api`
+  // above — not the old Swag Labs demo app's fixed, publicly-documented seed accounts.
+  //
+  // This build's login always succeeds regardless of password (mock auth, not a real backend
+  // check) — see LoginPage's class doc — so there is no server-rejected "wrong password" case
+  // here. `incorrectPassword` is a deliberate *positive* case (still logs in); the two negative
+  // cases are both client-side Flutter form validation: `blankCredentials` (required-field
+  // errors) and `malformedEmail` (invalid-email error).
   mobile: {
     validUser: MobileUser;
-    invalidPassword: MobileUser;
+    incorrectPassword: MobileUser;
+    blankCredentials: MobileUser;
+    malformedEmail: MobileUser;
   };
 }
